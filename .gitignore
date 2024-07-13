@@ -1,0 +1,9 @@
+*.log
+*.LOG
+*.vscode
+*.o
+*.mod
+.ipynb_checkpoints
+*.qdrep
+*.sqlite
+*.ncu-rep

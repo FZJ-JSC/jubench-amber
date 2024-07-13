@@ -1,0 +1,119 @@
+name: Amber Benchmark
+outpath: bench_run
+comment: JSC Amber benchmark based on Amber22 [benchmarks](https://ambermd.org/Amber20_Benchmark_Suite.tar.gz).
+
+#Configuration
+parameterset:
+  - name: systemParameter
+    init_with: platform.xml
+    parameter:
+      - {name: account, type: string, _: jscbenchmark} #  Slurm account
+      - {name: mail, type: string, _: ""} # Email Address for Slurm
+      - {name: queue, type: string, _: develbooster} # Slurm partition
+      - {name: taskspernode, type: int, _: "4"}  # Number of MPI tasks per node
+      - {name: gres, type: string, _: "gpu:$taskspernode"} # Number of GPUs
+      - {name: nodes, type: int, _: "1"}  # Total number of nodes
+      - {name: ngpu, type: int, mode: python, _: $taskspernode * $nodes}
+      - {name: threadspertask, type: int, _: "6"}
+      - {name: executable, type: string, _: "${AMBERHOME}/bin/pmemd.cuda.MPI"}
+      - {name: args_exec, type: string, _: "-O -i mdinOPT.GPU -p STMV.prmtop -c STMV.inpcrd -o md.opt.out -x md.x -r md.r -e md.e"}
+      - {name: additional_job_config, type: string, _: "source $AMBERINSPATH/amber.sh"}
+      - {name: preprocess, type: string, _: "module load $MODULE_LIST"}
+      - {name: postprocess, type: string, _: 'if grep  "Etot   =" md.opt.out | tail -n 2 |head -n1|grep -Fq "Etot   =  -2596988.5718" md.opt.out; then echo "Benchmark verified!" && echo "verified = true" >>md.opt.out ; else echo "Benchmark is not verified check the md.opt.out!" && echo "verified = false" >>md.opt.out && exit 1; fi '} # for verification
+
+
+  - name: src_config
+    parameter:
+      - {name: AMBERSRCFILE, export: true, _: "amber-amber22-with-patches.tar.gz"}
+      - {name: AMBERSRCPATH, export: true, _: "$jube_benchmark_home/../../src/amber-amber22-with-patches"}
+      - {name: BENCHMARKSRC, export: true, _: "Amber20_Benchmark_Suite.tar.gz"}
+      - {name: FORCEUNTAR, _: "FALSE"} # removes AMBER source folder and re-untar   
+  
+  - name: config_parameters
+    parameter: 
+      - {name: AMBERINSPATH, export: true, _: "$jube_benchmark_home/../../src/amber22"}  # AMBER installation PATH
+      - {name: MODULE_LIST, "_": " Stages/2023 CMake/3.23.1 flex/2.6.4 CUDA/11.7 GCC/11.3.0 ParaStationMPI/5.7.0-1 NCCL/default-CUDA-11.7"}
+      - {name: CMAKEOPTIONS, export: true, "_": "-DBUILD_PYTHON=FALSE -DCOMPILER=GNU -DMPI=TRUE -DCUDA=TRUE -DINSTALL_TESTS=TRUE -DDOWNLOAD_MINICONDA=FALSE -DNCCL=TRUE -DCHECK_UPDATES=FALSE"}
+      - {name: FORCEBUILD, _: "FALSE"} # Force build option can be TRUE or FALSE
+  
+  - name: executeset
+    init_with: platform.xml
+    parameter:
+      - {name: ready_file, "_": ready}
+
+# No need to change anything after here!
+
+patternset:
+  name: pattern
+  pattern: 
+      - {name: elapsed_time, type: float, _: 'Elapsed\(s\) = * $jube_pat_fp'} # for elapsed time(Elapsed(s))!
+      - {name: verified, type: string, _: "verified = $jube_pat_wrd"}
+fileset:
+     name: bench_files
+     copy:
+     - $jube_benchmark_home/../../src/PME/STMV_production_NVE_4fs/mdinOPT.GPU
+     - $jube_benchmark_home/../../src/PME/Topologies/STMV.prmtop
+     - $jube_benchmark_home/../../src/PME/Coordinates/STMV.inpcrd
+
+
+#Operations
+step:
+# untar
+  - name: unpack
+    use: src_config
+    comment: unpacking ... this step may take a while!
+    do: 
+      - echo "unpacking ... this step may take a while!"
+      - cd $jube_benchmark_home/../../src && if [ $FORCEUNTAR == "TRUE" ] || [ ! -d PME ]; then  wget -c https://ambermd.org/Amber20_Benchmark_Suite.tar.gz && tar xvzf $BENCHMARKSRC; fi
+      - cd $jube_benchmark_home/../../src && if [ $FORCEUNTAR == "TRUE" ] || [ ! -d $AMBERSRCPATH ]; then rm -rf $AMBERSRCPATH && tar xvzf $AMBERSRCFILE ;  fi
+      - mkdir -p $AMBERSRCPATH/build-mpi/
+      - module load Python # Just needed for update_amber script
+      - cd  $AMBERSRCPATH/ && ./update_amber --update-to=AmberTools.4,Amber.2 
+
+  - name: config
+    depend: unpack
+    export: true
+    use: 
+      - config_parameters, src_config  #use existing parameter
+    do:
+     - module load $MODULE_LIST
+     - cd $AMBERSRCPATH/build-mpi && if [ $FORCEBUILD == "TRUE" ] || [ ! -f "$AMBERINSPATH/bin/pmemd.cuda.MPI" ]; then cmake $AMBERSRCPATH -DCMAKE_INSTALL_PREFIX=$AMBERINSPATH $CMAKEOPTIONS  2>&1 | tee  cmake-mpi.log; fi
+# Build 
+  - name: compile
+    depend: config
+    export: true
+    use: 
+      - config_parameters, src_config
+    do: 
+    - echo "Building AMBER ... this step may take a while!"
+    - cd $AMBERSRCPATH/build-mpi && if [ $FORCEBUILD == "TRUE" ] || [ ! -f "$AMBERINSPATH/bin/pmemd.cuda.MPI" ]; then make -j16 install; fi
+ 
+  - name: submit
+    depend: compile
+    use: 
+      - config_parameters, systemParameter
+      - bench_files
+      - executeset
+      - from: platform.xml
+        _: jobfiles
+      - from: platform.xml
+        _: executesub
+
+    do:
+      done_file: $ready_file  
+      _: $submit $submit_script
+
+analyser:
+  name: analyse
+  use: pattern #use existing patternset
+  analyse:
+    step: submit
+    file: md.opt.out #file which should be scanned
+#Create result table
+result:
+  use: analyse #use existing analyser
+  table:
+    name: result
+    style: csv
+    sort: number
+    column: [nodes,ngpu,elapsed_time_last,verified] # The last value which is an averaged over all steps is printed.
