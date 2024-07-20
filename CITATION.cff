@@ -5,15 +5,15 @@ message: >-
 authors:
   - given-names: Kaveh
     family-names: Haghighi Mood
-    affiliation: Forschunsgzentrum Jülich, Jülich Supercomputing Centre
+    affiliation: Forschungszentrum Jülich, Jülich Supercomputing Centre
     orcid: 'https://orcid.org/0000-0002-8578-4961'
   - given-names: Andreas
     family-names: Herten
-    affiliation: Forschunsgzentrum Jülich, Jülich Supercomputing Centre
+    affiliation: Forschungszentrum Jülich, Jülich Supercomputing Centre
     orcid: 'https://orcid.org/0000-0002-7150-2505'
   - given-names: Sebastian
     family-names: Achilles
-    affiliation: Forschunsgzentrum Jülich, Jülich Supercomputing Centre
+    affiliation: Forschungszentrum Jülich, Jülich Supercomputing Centre
     orcid: 'https://orcid.org/0000-0002-1943-6803'
 abstract: "The Amber benchmark (GPU) of the JUPITER Benchmark Suite"
 identifiers:
